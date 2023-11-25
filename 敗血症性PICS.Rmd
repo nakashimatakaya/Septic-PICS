@@ -1,0 +1,1533 @@
+---
+title: "敗血症PICS研究"
+subtitle: "データ解析"
+author: 
+  - 中島 誉也
+  - Nakashima Takaya
+date: "`r format(Sys.time(), '%Y/%m/%d')`"
+output: 
+  pdf_document:
+    latex_engine: lualatex
+    toc: true
+    toc_depth: 3
+    number_section: true
+documentclass: bxjsarticle
+classoption:
+  - pandoc
+  - jafont=haranoaji
+editor_options: 
+  chunk_output_type: console
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+\newpage
+
+# ライブラリの読み込み
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+library(pacman)
+p_load(
+  readxl,
+  vtable,
+  eoffice,
+  tidyverse,
+  ggrepel,
+  ggplot2,
+  dplyr,
+  naniar,
+  lubridate,  # 時間データのハンドリング
+  gtsummary,  # データの要約
+  summarytools,
+  BiocManager,
+  ConsensusClusterPlus,
+  M3C, # consensus
+  Rtsne,
+  circlize,
+  patchwork,
+  forcats,
+  knitr,
+  kableExtra,               # table styling
+  alluvial,
+  ggalluvial  # plots
+)
+```
+
+# 解析手順
+
+-   示したいこと
+
+１．退院時の身体・認知・精神・QOL障害のPhenotyping
+→入院時の状態はどのように違うのか／入院時に予測できるのか？
+
+２．この分かれたPhenotyping
+が3，6，12か月後にどのような経過をたどるのか？（自然に治る群、障害が残ってしまうため早期の介入がやはり必要な群など）
+
+-   手順
+
+1.  データの確認
+
+2.  データ解析
+
+3.  データの読み込み
+
+4.  欠測値の処理
+
+5.  標準化
+
+6.  クラスタリング (Consensus clustering)
+
+7.  Phenotypeの特徴の視覚化 (次元削減手法(T-SNE), table1作成)
+
+8.  アウトカムの比較
+
+# データの確認
+
+## PICSとは？
+
+([日本集中治療医学会HP](https://www.jsicm.org/provider/pics/pics01.html)より参照)
+
+PICS (postintensive care syndrome) とは、ICU 在室中あるいは ICU
+退室後，さらには退院後に⽣じる⾝体障害・認知機能・精神の障害で、ICU
+患者の⻑期予後のみならず患者家族の精神にも影響を及ぼします（図 1）。
+PICS は近年の救急・集中治療領域のホットトピックスの１つで、近年 ICU
+患者における⻑期的な運動機能・認知機能・精神の障害として様々な報告がなされるようになり、市⺠および医療従事者へのPICS
+の啓発活動は 2010
+年以降の集中治療医学における解決すべき重要課題になりつつあります。
+
+![](images/スクリーンショット%202023-09-15%2020.04.37.png){width="587"}
+
+## PICSの３つの症状
+
+**１）運動機能障害**\
+PICS
+の運動機能障害として、肺機能障害、神経筋障害、全般的⾝体機能障害などがあります。特に重症疾患の罹患後に左右対称性の四肢のびまん性の筋⼒低下を呈する症候群を
+ICU-acquired weakness（ICU-AW）と呼び、PICS
+の運動機能障害のなかで最も重要なカテゴリーとして注⽬されています。\
+\
+**２）認知機能障害**\
+認知機能障害は、ICU退室患者の30－80％に発症します。認知機能が障害された高齢者は、死亡率増加のリスク因子だけでなく、医療費の増加にも関連し、さらに家族の大きな負担となるため、大きな社会問題となります。ICU
+で遭遇する認知機能障害の多くはせん妄ですが，うつ病の発症による認知機能障害や高齢者では認知症の悪化なども認められます。\
+\
+**３）精神機能障害**\
+うつ病、不安、⼼的外傷後ストレス障害[posttraumatic stress disorder
+(PTSD)]が PICS
+の精神障害を構成する要素です。重症患者の⽣存者のうち、30％はうつ状態に苛まれ、70％は不安に苦しみ、10−50％は
+PTSD
+を発症します。そのため、可能な限り精神的なアセスメントを⾏い、適切な対応が必要です。
+
+## 本研究で用いる変数定義の確認
+
++-----------------------------------+-----------------------------------+
+| 変数名                            | 定義                              |
++:=================================:+:=================================:+
+| PICS退院時_握力最大値             | 握力の最大値 (連続変数)           |
++-----------------------------------+-----------------------------------+
+| PICS退院時_MRC score              | Medical Research Councilの略.     |
+|                                   | MRCを用いて6関節                  |
+|                                   | の合計点から筋力状態を評価するMRC |
+|                                   | sumスコア. (カテゴリ変数)         |
++-----------------------------------+-----------------------------------+
+| PICS退院時_Barthel                | 移乗動                            |
+|                                   | 作や着替え、食事といった日常生活  |
+|                                   | 動作（ADL）を評価するための指標.  |
+|                                   | 100点だと全自立，0点だと全介助    |
+|                                   | (カテゴリ変数)                    |
++-----------------------------------+-----------------------------------+
+| PICS退院時_HADsうつ               | 一般外来に                        |
+|                                   | 身体症状を訴えて来院する患者の不  |
+|                                   | 安と抑うつを評価．不安（HADS-A）  |
+|                                   | および抑うつ（HADS-D）のそれぞれ  |
+|                                   | がある．合計点がそれぞれ0〜21点と |
+|                                   | なり、高いほど不安と抑うつが強い  |
+|                                   | (カテゴリ変数)                    |
++-----------------------------------+-----------------------------------+
+| PICS退院時_HADｓ不安              | 同上 (カテゴリ変数)               |
++-----------------------------------+-----------------------------------+
+| PICS退院時_IES_R_Intrusion        | 心的外傷性ストレス症              |
+|                                   | 状を測定するための指標．侵入症状  |
+|                                   | Intrusion （8 項目） ;            |
+|                                   | 1，2，3，6，9，14，16，20         |
+|                                   | (カテゴリ変数)                    |
++-----------------------------------+-----------------------------------+
+| PICS退院時_IES_R_Avoidance        | 回避症状 Avoidance （8 項目） ;   |
+|                                   | 5，7，8，11，12，13，17，22       |
+|                                   | (カテゴリ変数)                    |
++-----------------------------------+-----------------------------------+
+| PICS退院時_IES_R_Hyperarousal     | 過覚醒症状 Hyperarousal （6       |
+|                                   | 項目） ; 4，10，15，18，19，21    |
+|                                   | (カテゴリ変数)                    |
++-----------------------------------+-----------------------------------+
+| PICS退院時_IES_R_合計             | 上記３つの合計点 (カテゴリ変数)   |
++-----------------------------------+-----------------------------------+
+| PICS退院時_SMQ                    | 全ての方の                        |
+|                                   | 不快な考えやイメージに対する4マイ |
+|                                   | ンドフルな態度を測定する評価指標  |
+|                                   | (カテゴリ変数)                    |
++-----------------------------------+-----------------------------------+
+| PICS退院時_Clinical Frailty Score | Frailの評価指標．1\               |
+|                                   | \                                 |
+|                                   | \                                 |
+|                                   | \                                 |
+|                                   | ~9まであり，1は非常に健常な状態． |
+|                                   | (カテゴリ変数)                    |
++-----------------------------------+-----------------------------------+
+| PICS退院時_EQ_5D_移動の程度       | 健康関連QOLを測定するため         |
+|                                   | に開発された包括的な評価尺度．５  |
+|                                   | 項目の質問で構成　(カテゴリ変数)  |
++-----------------------------------+-----------------------------------+
+| PICS退院時_EQ_5D_身の回りの管理   | 同上　(カテゴリ変数)              |
++-----------------------------------+-----------------------------------+
+| PICS退院時_EQ_5D_ふだんの活動     | 同上　(カテゴリ変数)              |
++-----------------------------------+-----------------------------------+
+| PICS退院時_EQ_5D_痛み_不快感      | 同上　(カテゴリ変数)              |
++-----------------------------------+-----------------------------------+
+| PICS退院時_EQ_5D_不安_ふさぎこみ  | 同上(カテゴリ変数)                |
++-----------------------------------+-----------------------------------+
+| PICS退院時_EQ_5D_VAS              | Visual Analogue Scale             |
+|                                   | (痛みの評価)                      |
+|                                   | 0～100mm、「痛みなし」            |
+|                                   | から「最大の痛み」(カテゴリ変数)  |
++-----------------------------------+-----------------------------------+
+
+# データ解析
+
+## データの読み込み
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+
+sepsis_pics_raw <- read_xlsx("/Users/nakashimatakaya/Desktop/敗血症PICS/Data/ILOSS20230922_data_share.xlsx")
+
+# clusteringに用いる変数の抽出
+pics_clustering_raw <- sepsis_pics_raw %>% 
+  select(Patient_Uniqe_ID, Hospital_Name, Death_during_hospitalization, 
+         Grip_strength_Hospital_discharge, MRC_Hospital_discharge, Barthel_index_Hospital_discharge
+         ,HADs_depression_Hospital_discharge, HADs_anxiety_Hospital_discharge, IES_R_Sum_Hospital_discharge,
+         SMQ_Hospital_discharge, Clinical_Frailty_Scale_Hospital_discharge,EQ_5D_Sum_Score_Hospital_discharge 
+  ) %>% 
+  mutate(Clinical_Frailty_Scale_Hospital_discharge = as.numeric(Clinical_Frailty_Scale_Hospital_discharge)) 
+
+# EQ_5D_Mobility_Hospital_discharge:EQ_5D_Anxiety_Depression_Hospital_discharge, EQ_5D_VAS_Hospital_discharge
+```
+
+## 欠測値の処理
+
+欠測値の処理については，本解析では，「退院時に生存しており，解析に用いる評価指標か全て揃っている患者」を対象として解析をおこなうため，case
+complete analysisをおこなう．
+
+まず，欠測値の分布を見る．
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+miss_var_summary(pics_clustering_raw)
+
+# gg_miss_var(pics_clustering_raw, show_pct = T)
+# 
+# vis_miss(pics_clustering_raw, cluster = T)
+```
+
+生存者に限定した欠測はこちら
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# 生存者に絞る
+pics_clustering_survival <- pics_clustering_raw %>% 
+  filter(Death_during_hospitalization == 0)
+
+# miss_var_summary(pics_clustering_survival)
+# 
+# gg_miss_var(pics_clustering_survival, show_pct = T)
+# 
+# vis_miss(pics_clustering_survival, cluster = T)
+
+```
+
+## 生存者かつ，欠測がない患者データの抽出
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# 261人から217人へ
+pics_clustering_complete <- pics_clustering_survival %>% 
+  drop_na() %>% 
+  mutate(across(everything(), as.character),  # すべての列を文字列に
+         Grip_strength_Hospital_discharge = as.numeric(Grip_strength_Hospital_discharge),
+         Clinical_Frailty_Scale_Hospital_discharge = as.numeric(Clinical_Frailty_Scale_Hospital_discharge))
+```
+
+## データの分布の確認
+
+別途pdf参照．
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# dfSummary(pics_clustering_complete %>% 
+#             select(-Patient_Uniqe_ID)) %>% view() 
+```
+
+## 標準化
+
+解析のために標準化をおこなった．
+
+平均0，分散1の分布に従うようにする．
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# ## データの型の変更(character → numeric)
+pics_clustering_complete_standard <- pics_clustering_complete %>%
+  mutate(across(Grip_strength_Hospital_discharge:EQ_5D_Sum_Score_Hospital_discharge, as.numeric))
+# 
+pics_clustering_complete_analysis <- pics_clustering_complete_standard %>%
+  select(-c(1:3)) 
+# 
+# # 標準化
+pics_clustering_complete_analysis <- pics_clustering_complete_analysis %>%
+  mutate(across(everything(), ~ ( . - mean(.)) / sd(.)))
+# 
+# dfSummary(pics_clustering_complete_analysis) %>% 
+#   view() 
+#   
+# pics_clustering_complete_analysis <- pics_clustering_complete %>% 
+#   select(-c(Patient_Uniqe_ID, Hospital_Name)) %>% 
+#    mutate(across(everything(), as.numeric))
+```
+
+## tSNEによる次元削減
+
+患者数217人に対して変数が17個と多いため，次元削減手法の一つであるtsneを用いて，次元削減を行った．
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+
+set.seed(2008) 
+ts <- Rtsne(pics_clustering_complete_analysis, perplexity = 30) # t-SNE
+
+tsne <- ts$Y %>% 
+  as.matrix() 
+
+colnames(tsne) <- c("tsne1", "tsne2")
+
+tsne_data <- pics_clustering_complete_analysis %>% 
+  cbind(as_tibble(tsne)) 
+
+# 得られた2次元データの抽出
+
+gg.pca <- ggplot(data = tsne_data,
+                 aes(x = tsne1, y = tsne2)) +
+  geom_point() +
+  theme_bw() +
+  labs(x="tsne1", y="tsne2",title="Rtsne all")
+
+print(gg.pca)
+```
+
+## クラスタリング (Consensus Clustering)
+
+-   参照資料
+
+<https://bioconductor.org/packages/devel/bioc/vignettes/ConsensusClusterPlus/inst/doc/ConsensusClusterPlus.pdf>
+
+<https://bioconductor.riken.jp/packages/3.1/bioc/manuals/ConsensusClusterPlus/man/ConsensusClusterPlus.pdf>
+
+<https://www.slideshare.net/SatoshiFujii/bioconductor-consensusclusterplusccp>
+
+-   評価方法について
+
++---------------------------+-----------------------------------+
+| 評価ツール                | 説明                              |
++:=========================:+:=================================:+
+| Consensus matrix          | 境界分布が明瞭なものが適切な分類  |
++---------------------------+-----------------------------------+
+| Consensus CDF             | 高値かつ水平なものが適切な分類    |
+| (累積密度関数)            |                                   |
++---------------------------+-----------------------------------+
+| Delta area                | C                                 |
+|                           | DFの変化が乏しくなる直前のkが適切 |
++---------------------------+-----------------------------------+
+| Tracking plot             | 各 k（行）に対する項 目           |
+|                           | （                                |
+|                           | 列）のクラスタ割り当てを色で表す  |
+|                           |                                   |
+|                           | 頻繁にクラスタが変わ る           |
+|                           | （                                |
+|                           | 列内で色が変わる）項目は、不安定  |
++---------------------------+-----------------------------------+
+| Cluster-Consensus Plot    | 全ての棒線が高値であるものが適切  |
++---------------------------+-----------------------------------+
+| Item-Consensus Plot       | 色にば ら                         |
+|                           | つ                                |
+|                           | きがあると不安定な推定を示唆する  |
++---------------------------+-----------------------------------+
+
+### Consensus k-means
+
+-   分割の良さを評価する関数を定め、それを最適化する分割を探索する手法(k個のクラスタに分割する)
+
+-   クラスタが超球状の形状で、クラスタ中の対象数が等しいことが前提
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# 行と列の入れ替え
+transposed_data <- t(tsne_data %>% select(c(tsne1, tsne2)))
+
+colnames(transposed_data) <- pics_clustering_complete$Patient_Uniqe_ID
+
+results_kmeans <-  ConsensusClusterPlus(transposed_data,
+                                        maxK = 6, reps = 1000, 
+                                        pItem = 0.8, pFeature = 1,
+                                        innerLinkage="complete",
+                                        finalLinkage = "average",
+                                        clusterAlg = "km",
+                                        distance = "euclidean",
+                                        seed = 2008)
+
+icl_kmeans <- calcICL(results_kmeans)
+
+# クラス数の決定
+k_kmeans <- 4
+```
+
+### Consensus hierarchical clustering
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+
+results_hierarchical <-  ConsensusClusterPlus(transposed_data,
+                                              maxK = 6, reps = 1000, 
+                                              pItem = 0.8, pFeature = 1,
+                                              innerLinkage="complete",
+                                              finalLinkage = "average",
+                                              clusterAlg = "hc",
+                                              distance = "euclidean",
+                                              seed = 2008)
+
+icl_hierarchical <- calcICL(results_hierarchical)
+
+# クラス数の決定
+hierarchical <- 4
+```
+
+### Consensus paritioning around medoids
+
+**PAM（Partitioning Around Medoids）とは？**
+
+-   アルゴリズム
+
+1.  k個の medoid を選択する
+
+medoid
+とは、[クラスタ](http://d.hatena.ne.jp/keyword/%A5%AF%A5%E9%A5%B9%A5%BF)ー内の点で、その点以外の[クラスタ](http://d.hatena.ne.jp/keyword/%A5%AF%A5%E9%A5%B9%A5%BF)ー内の点との非類似度の総和が最小になる点。
+
+2.  k-means と同様に、すべてのオブジェクトに対して、非類似度が最も小さい
+medoid
+を持つ[クラスタ](http://d.hatena.ne.jp/keyword/%A5%AF%A5%E9%A5%B9%A5%BF)ーに割当てる
+
+3.  すべての[クラスタ](http://d.hatena.ne.jp/keyword/%A5%AF%A5%E9%A5%B9%A5%BF)ーの
+medoid を再計算する
+
+4.  すべてのオブジェクトに対して、非類似度が最も小さい medoid
+を持つ[クラスタ](http://d.hatena.ne.jp/keyword/%A5%AF%A5%E9%A5%B9%A5%BF)ーに再割当てする
+
+5.  3 \~ 4 を繰り返し、medoid
+となるオブジェクトを交換することで、より最適なオブジェクトへと近づけていく
+
+-   **Pros.**
+
+k-means
+がエラーを距離の2乗で評価するのに対し、距離の1乗で評価するので、ノイズ（noise）や外れ値（outlier）の影響を受けにくい
+
+-   **Cons.**
+
+k-means と比較して、処理コスト（time complexity）が掛かる：O(N\^2k)
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+
+results_pam <-  ConsensusClusterPlus(transposed_data,
+                                     maxK = 6, reps = 1000, 
+                                     pItem = 0.8, pFeature = 1,
+                                     innerLinkage="complete",
+                                     finalLinkage = "average",
+                                     clusterAlg = "pam",
+                                     distance = "euclidean",
+                                     seed = 2008)
+
+
+icl_pam <- calcICL(results_pam)
+
+# クラス数の決定
+pam <- 4
+```
+
+### Consensus k-means++
+
+上手く動かないため保留．
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+
+# kmeansp2 <- function(this_dist, k, iter.max = 1000, nstart = 1) {
+#   x <- t(transposed_data)
+#   n <- nrow(x) # number of data points
+#   centers <- numeric(k) # IDs of centers
+#   distances <- matrix(numeric(n * (k - 1)), ncol = k - 1) # distances[i, j]: The distance between x[i,] and x[centers[j],]
+#   res.best <- list(tot.withinss = Inf) # the best result among <nstart> iterations
+#   for (rep in 1:nstart) {
+#     pr <- rep(1, n) # probability for sampling centers
+#     for (i in 1:(k - 1)) {
+#       centers[i] <- sample.int(n, 1, prob = pr) # Pick up the ith center
+#       distances[, i] <- colSums((t(x) - x[centers[i], ])^2) # Compute (the square of) distances to the center
+#       pr <- distances[cbind(1:n, max.col(-distances[, 1:i, drop = FALSE]))]  # Compute probaiblity for the next sampling
+#     }
+#     centers[k] <- sample.int(n, 1, prob = pr)
+#     ## Perform k-means with the obtained centers
+#     res <- kmeans(x, x[centers, ], iter.max = iter.max, nstart = 1)
+#     res$inicial.centers <- x[centers, ]
+#     ## Store the best result
+#     if (res$tot.withinss < res.best$tot.withinss) {
+#       res.best <- res
+#     }
+#   }
+#   res.best$cluster
+# }
+# 
+# results_kmeans_sp2 <-  ConsensusClusterPlus(transposed_data,
+#                                             maxK = 10, reps = 1000, 
+#                                             pItem = 0.8, pFeature = 1,
+#                                             innerLinkage="complete",
+#                                             finalLinkage = "average",
+#                                             clusterAlg = "kmeansp2",
+#                                             distance = "euclidean"
+# )
+```
+
+# Phenotypeの特徴視覚化
+
+### クラスタリング結果の統合
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+
+k_kmeans <- 4
+
+clustering_data <- tsne_data %>% 
+  mutate(Patient_Uniqe_ID = 
+           pics_clustering_complete$Patient_Uniqe_ID,
+         kmeans_class = 
+           factor(paste0("Phenotype", 
+                         results_kmeans[k_kmeans][[1]]$consensusClass)),
+         hierarchical_class = 
+           factor(paste0("Phenotype", 
+                         results_hierarchical[k_kmeans][[1]]$consensusClass)),
+         pam_class = 
+           factor(paste0("Phenotype", 
+                         results_pam[k_kmeans][[1]]$consensusClass)),
+  ) %>% 
+  select(Patient_Uniqe_ID, everything())
+```
+
+### tSNE
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+
+gg_all <- ggplot(data = clustering_data,
+                 aes(x = tsne1, y = tsne2)) +
+  geom_point() +
+  theme_bw() +
+  labs(x="tsne1", y="tsne2",title="tSNE all")
+
+high_contrast_colors <- c("Phenotype1" = "#D32F2F", "Phenotype2" = "#1976D2", 
+                          "Phenotype3" = "#388E3C", "Phenotype4" = "#8E44AD")
+
+
+gg_kmeans <- ggplot(data = clustering_data, aes(x = tsne1, y = tsne2, color = kmeans_class)) +
+  geom_point() +
+  scale_color_manual(values = high_contrast_colors) + # 手動で色を指定
+  theme_bw() +
+  labs(x = "tsne1", y = "tsne2", title = "tSNE kmeans") +
+    theme(legend.position ="bottom")
+
+gg_hierarchical <- ggplot(data = clustering_data,
+                          aes(x = tsne1, y = tsne2, color = hierarchical_class)) +
+  geom_point() +
+  theme_bw() +
+  labs(x="tsne1", y="tsne2",title="tSNE hierarchical")
+
+gg_pam <- ggplot(data = clustering_data,
+                 aes(x = tsne1, y = tsne2, color = pam_class)) +
+  geom_point() +
+  theme_bw() +
+  labs(x="tsne1", y="tsne2",title="tSNE pam")
+
+(gg_all + gg_kmeans) / (gg_hierarchical + gg_pam)
+
+
+topptx(gg_kmeans, filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/tsne_nt1.pptx")
+```
+
+### alluvial plot
+
+各モデルがクラスタリングした結果が，モデルごとにどう変わるかを示したもの．
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+
+clustering_alluvial <- clustering_data %>% 
+  select(kmeans_class, hierarchical_class, pam_class) %>% 
+  group_by(kmeans_class, hierarchical_class, pam_class) %>% 
+  summarise(n = n()) %>% 
+  ungroup()
+
+# dev.off()
+# par(mfrow = c(1, 1))
+alluvial(clustering_alluvial %>% select(-n),
+         freq = clustering_alluvial$n, border = NA, alpha = 0.5,
+         col=case_when(clustering_alluvial$kmeans_class == "Phenotype1" ~ "darkred",
+                       clustering_alluvial$kmeans_class == "Phenotype2" ~ "darkblue",
+                       clustering_alluvial$kmeans_class == "Phenotype3" ~ "darkgreen",
+                       clustering_alluvial$kmeans_class == "Phenotype4" ~ "darkorange",
+                       TRUE ~ "purple"),
+         cex=0.75,
+         axis_labels = c("k-means", "hierarchical clustering", "pam"))
+# hide = fly$n < 150)
+```
+
+### table1(解析に投入した変数)
+
+phenotypeでクラス分けしたtableを作成する． 別途pdf参照．
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+
+# phenotypeと標準化していないデータを結合する
+table1 <- pics_clustering_complete  %>% 
+  select(Patient_Uniqe_ID, Grip_strength_Hospital_discharge:EQ_5D_Sum_Score_Hospital_discharge) %>% 
+  mutate(
+    Grip_strength_Hospital_discharge = as.numeric(Grip_strength_Hospital_discharge),
+    Clinical_Frailty_Scale_Hospital_discharge = as.numeric(Clinical_Frailty_Scale_Hospital_discharge)
+  ) %>% 
+  # mutate(across(-c(Patient_Uniqe_ID, Grip_strength_Hospital_discharge, Clinical_Frailty_Scale_Hospital_discharge), 
+  #               ~factor(., levels =  unique(sort(as.numeric(.)))))) %>% 
+  
+  mutate(across(-c(Patient_Uniqe_ID), 
+                ~as.numeric(.))) %>% 
+  cbind(clustering_data %>% select(kmeans_class))  %>% 
+  rename(
+    "Grip strength" = Grip_strength_Hospital_discharge,
+    "MRC" = MRC_Hospital_discharge,
+    # "Barthel Answer" = Barthel_Answer_Hospital_discharge_1Patient_2Family_3Staff,
+    # "EQ 5D" = EQ_5D_Answer_Hospital_discharge_1Patient_2Family_3Staff,
+    # "SMQHADSIESR Answer" = SMQHADSIESR_Answer_Hospital_discharge_1Patient_2Family_3Staff_4NoanswerNoconsiousness_5NoanswerCognitiveissue_6NoanswerPsychologcalissue,
+    "Barthel index" = Barthel_index_Hospital_discharge,
+    "HADs depression" = HADs_depression_Hospital_discharge,
+    "HADs anxiety" = HADs_anxiety_Hospital_discharge,
+    # "IES R Intrusion" = IES_R_Intrusion_Hospital_discharge,
+    # "IES R Avoidance" = IES_R_Avoidance_Hospital_discharge,
+    # "IES R Hyperarousal" = IES_R_Hyperarousal_Hospital_discharge,
+    "IES R Sum" = IES_R_Sum_Hospital_discharge,
+    "SMQ" = SMQ_Hospital_discharge,
+    "Clinical Frailty Scale" = Clinical_Frailty_Scale_Hospital_discharge,
+    "EQ 5D Sum" = EQ_5D_Sum_Score_Hospital_discharge,
+    # "EQ 5D Mobility" = EQ_5D_Mobility_Hospital_discharge,
+    # "EQ 5D Self Care" = EQ_5D_Self_Care_Hospital_discharge,
+    # "EQ 5D Usual Activities" = EQ_5D_Usual_Activities_Hospital_discharge,
+    # "EQ 5D Pain Discomfort" = EQ_5D_Pain_Discomfort_Hospital_discharge,
+    # "EQ 5D Anxiety Depression" = EQ_5D_Anxiety_Depression_Hospital_discharge,
+    # "EQ 5D VAS" = EQ_5D_VAS_Hospital_discharge,
+  ) 
+
+theme_gtsummary_journal(journal = c("jama"), set_theme = TRUE)
+theme_gtsummary_compact()
+
+table1_data_clustering <- table1 %>% 
+  inner_join(sepsis_pics_raw %>% select(Patient_Uniqe_ID,
+                                        Age, Gender_1_Male_2_Female), 
+             by = "Patient_Uniqe_ID") %>% 
+  mutate(Gender = case_when(Gender_1_Male_2_Female == 1 ~ "Male",
+                            Gender_1_Male_2_Female == 2 ~ "Female",
+                            TRUE ~ NA_character_)) %>% 
+  select(- c(Patient_Uniqe_ID, Gender_1_Male_2_Female)) %>% 
+  select(Age, Gender, everything()) %>% 
+  mutate(`Clinical Frailty Scale` = as.integer(`Clinical Frailty Scale`)) %>% 
+  tbl_summary(     
+    by = kmeans_class,
+    type = list(`Clinical Frailty Scale` ~ "continuous", `EQ 5D Sum` ~ "continuous"), 
+    statistic = list(
+      # `Clinical Frailty Scale` ~ "{median} ({IQR})", 
+      all_categorical() ~ "{n} / {N} ({p}%)"
+    ),
+    digits = list(c(-`EQ 5D Sum`) ~ 1, c(`EQ 5D Sum`) ~ 3),
+    missing = "no"
+  ) %>% 
+  modify_spanning_header(starts_with("stat_") ~ "**Phenotype**") %>% 
+  modify_header(
+    label = "**Characteristics**",
+    all_stat_cols() ~ "**{level} \n n = {n} ({round(p * 100, 1)}%)**"
+  ) %>% 
+  add_n() %>% 
+  add_overall() %>% 
+  bold_labels() %>% 
+  #add_p() %>% 
+  as_flex_table()
+
+
+print(table1_data_clustering, "docx")
+
+#table1_data_clustering
+```
+
+### table1 (baseline変数)
+
+```{r}
+library(tidyverse)
+
+# 既存のデータフレーム（dfと仮定）から指定の変数を抽出
+selected_df <- sepsis_pics_raw %>%
+  select(
+    Patient_Uniqe_ID, 
+    Age,
+    Gender_1_Male_2_Female,
+    BMI,
+    Employment_Patient_Prior_Hospitalization,
+    ICU_admission_route_1ER_2EmergencyGeneralWard_3EmergencyOP_4OP_5Plannedadmission,
+    Septic_Shock_at_ICU_admission,
+    敗血症Source,
+    `Charlson index`,
+    `Clinical frailty  score`,
+    Psychological_Disorder_before_hospitalization,
+    Barthel_Index_before_admission,
+    APACHEⅡ,
+    SOFA_ICU_admission,
+    NPPV,
+    NHF,
+    Mechanical_Ventilation,
+    ECMO,
+    CHDF,
+    Continuous_NAD,
+    Continuous_DOA,
+    Continuous_DOB,
+    Continuous_Adrenaline,
+    Continuous_vasopressin,
+    Corticosteroids_for_septic_shock,
+    Septic_shock_ICU_stay,
+    Length_mechanical_ventilation,
+    Length_ICU_stay,
+    Barthel_index_ICU_discharge,
+    MRC_ICU_discharge,
+    Grip_strength_ICU_discharge,
+    Clinical_Frailty_Scale_ICU_discharge,
+    Length_Hospital_stay
+  )%>%
+  rename(
+    Age = Age,
+    Gender = Gender_1_Male_2_Female,
+    BMI = BMI,
+    `Employment status prior to hospitalization` = Employment_Patient_Prior_Hospitalization,
+    ICU_route = ICU_admission_route_1ER_2EmergencyGeneralWard_3EmergencyOP_4OP_5Plannedadmission,
+    Septic_shock_initial = Septic_Shock_at_ICU_admission,
+    Sepsis_source = 敗血症Source,
+    Charlson_index = `Charlson index`,
+    Clinical_frailty_score = `Clinical frailty  score`,
+    Psych_disorder_pre_hospital = Psychological_Disorder_before_hospitalization,
+    Barthel_pre_admission = Barthel_Index_before_admission,
+    Apache2 = APACHEⅡ,
+    Sofa_initial = SOFA_ICU_admission,
+    `Mechanical Ventilation` = Mechanical_Ventilation,
+    NAD = Continuous_NAD,
+    DOA = Continuous_DOA,
+    DOB = Continuous_DOB,
+    Adrenaline = Continuous_Adrenaline,
+    Vasopressin = Continuous_vasopressin,
+    Septic_shock_ICU = Septic_shock_ICU_stay
+  ) %>% 
+  mutate(across(-c(Patient_Uniqe_ID, Sepsis_source), 
+                ~as.numeric(.))) %>% 
+  mutate(Gender = case_when(Gender == 1 ~ "Men",
+                            Gender == 2 ~ "Women",
+                            TRUE ~ NA_character_))
+
+
+selected_df_new <- selected_df %>% 
+  inner_join(clustering_data %>% select(Patient_Uniqe_ID, kmeans_class), by =  "Patient_Uniqe_ID") %>% 
+  select(-Patient_Uniqe_ID)
+
+names(selected_df_new) <- str_replace_all(names(selected_df_new), "_", " ")
+
+
+table1_data_baseline <- selected_df_new %>% 
+  mutate(`Clinical frailty score` = as.integer(`Clinical frailty score`)) %>% 
+  tbl_summary(     
+    by = `kmeans class`,
+    type = list(`Clinical frailty score` ~ "continuous"), 
+    statistic = list(
+      all_categorical() ~ "{n} / {N} ({p}%)",
+      all_continuous() ~ "{median} [{p25} - {p75}]"
+    ),
+    digits = all_continuous() ~ 1,
+    missing = "no"
+  ) %>% 
+  modify_spanning_header(starts_with("stat_") ~ "**Presence of VAE **") %>% 
+  modify_header(
+    label = "**Characteristics**",
+    all_stat_cols() ~ "**{level} \n n = {n} ({round(p * 100, 1)}%)**"
+  ) %>% 
+  add_n() %>% 
+  add_overall() %>% 
+  bold_labels() %>% 
+  #add_p() %>% 
+  as_flex_table()
+
+print(table1_data_baseline, "docx")
+
+```
+
+### 各変数ごとのプロット
+
+敗血症phenotype論文のsupplement(下図)をイメージ．
+
+![](images/スクリーンショット%202023-09-21%2021.54.20.png)
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# phenotypeと標準化していないデータを結合する
+table1 <- pics_clustering_complete  %>% 
+  select(Patient_Uniqe_ID, Grip_strength_Hospital_discharge:EQ_5D_Sum_Score_Hospital_discharge) %>% 
+  mutate(
+    Grip_strength_Hospital_discharge = as.numeric(Grip_strength_Hospital_discharge),
+    Clinical_Frailty_Scale_Hospital_discharge = as.numeric(Clinical_Frailty_Scale_Hospital_discharge),
+    EQ_5D_Sum_Score_Hospital_discharge = as.numeric(EQ_5D_Sum_Score_Hospital_discharge)
+  ) %>% 
+  mutate(across(-c(Patient_Uniqe_ID), 
+                ~as.numeric(.))) %>% 
+  cbind(clustering_data %>% select(kmeans_class))  %>% 
+  rename(
+    "Grip strength" = Grip_strength_Hospital_discharge,
+    "MRC" = MRC_Hospital_discharge,
+    # "Barthel Answer" = Barthel_Answer_Hospital_discharge_1Patient_2Family_3Staff,
+    # "EQ 5D" = EQ_5D_Answer_Hospital_discharge_1Patient_2Family_3Staff,
+    # "SMQHADSIESR Answer" = SMQHADSIESR_Answer_Hospital_discharge_1Patient_2Family_3Staff_4NoanswerNoconsiousness_5NoanswerCognitiveissue_6NoanswerPsychologcalissue,
+    "Barthel index" = Barthel_index_Hospital_discharge,
+    "HADs depression" = HADs_depression_Hospital_discharge,
+    "HADs anxiety" = HADs_anxiety_Hospital_discharge,
+    # "IES R Intrusion" = IES_R_Intrusion_Hospital_discharge,
+    # "IES R Avoidance" = IES_R_Avoidance_Hospital_discharge,
+    # "IES R Hyperarousal" = IES_R_Hyperarousal_Hospital_discharge,
+    "IES R Sum" = IES_R_Sum_Hospital_discharge,
+    "SMQ" = SMQ_Hospital_discharge,
+    "Clinical Frailty Scale" = Clinical_Frailty_Scale_Hospital_discharge,
+    "EQ 5D Sum" = EQ_5D_Sum_Score_Hospital_discharge,
+    "Phenotype" = kmeans_class
+    # "EQ 5D Mobility" = EQ_5D_Mobility_Hospital_discharge,
+    # "EQ 5D Self Care" = EQ_5D_Self_Care_Hospital_discharge,
+    # "EQ 5D Usual Activities" = EQ_5D_Usual_Activities_Hospital_discharge,
+    # "EQ 5D Pain Discomfort" = EQ_5D_Pain_Discomfort_Hospital_discharge,
+    # "EQ 5D Anxiety Depression" = EQ_5D_Anxiety_Depression_Hospital_discharge,
+    # "EQ 5D VAS" = EQ_5D_VAS_Hospital_discharge,
+  )
+
+# 箱ひげ図を描き、中央値を折線で結ぶ
+# 色を手動で設定
+high_contrast_colors <- c("Phenotype1" = "#D32F2F", "Phenotype2" = "#1976D2", 
+                          "Phenotype3" = "#388E3C", "Phenotype4" = "#8E44AD")
+
+boxplot_clustering_table1 <- function(data0, variable){
+  
+  data <- data0 %>% 
+    select(Phenotype, variable)
+  
+  gg_plot_num_table <- ggplot(data, aes(x = Phenotype, y = data[,2], color = Phenotype)) +
+    geom_boxplot(aes(fill=Phenotype), alpha=0.4, outlier.shape = NA) +
+    stat_summary(fun=median, geom="point", size=0.5) +
+    scale_color_manual(values=high_contrast_colors) +  # 色を手動で設定
+    scale_fill_manual(values=high_contrast_colors) +  # 塗りつぶし色も手動で設定
+    xlab("Phenotype") +
+    ylab(paste0("", variable, "")) +
+    ggtitle(paste0("", variable, " each Phenotype")) +
+    theme_bw() +
+    theme(plot.title.position = "plot",  # タイトル位置を "plot" 内に
+          plot.title = element_text(hjust = 0.5, size = 16),
+          legend.position = "bottom") +
+    theme(legend.text = element_text(size = 12),
+          axis.title.x = element_text(size = 16),  # x軸のタイトルの文字サイズ
+          axis.title.y = element_text(size = 16),  # y軸のタイトルの文字サイズ
+          axis.text.x = element_text(size = 12),   # x軸のラベルの文字サイズ
+          axis.text.y = element_text(size = 12))   # y軸のラベルの文字サイズ
+  
+  
+  topptx(
+    figure = gg_plot_num_table,
+    filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_table_figure_20231005.pptx",
+    nr = 1,
+    nc = 1,
+    irow = 1,
+    icol = 1,
+    onsame = FALSE,
+    title = "",
+    left = 0.15,
+    top = 0.15,
+    width = 254/25.4,
+    height = 190.5/25.4,
+    units = "in",
+    append = TRUE,
+    devsize = FALSE
+  )
+}
+
+# 解析に用いた変数
+for (variable in names(table1)[2:10]) {
+  boxplot_clustering_table1(table1, variable)
+}
+
+# baseline変数＆numeric
+selected_df_new_numeric <- selected_df_new %>% 
+  rename(Phenotype = "kmeans class") %>% 
+  select(Phenotype, where(is.numeric)) %>% 
+  as.data.frame() 
+  
+  
+  for (variable in names(selected_df_new_numeric)[2:31]) {
+    boxplot_clustering_table1(selected_df_new_numeric,  variable)
+  }
+# baseline変数＆categorical
+
+```
+
+# Phenotypeごとのアウトカムの比較
+
+-   Survival_at_3month
+
+-   Return_to_work_at_3month
+
+-   Return_to_original_work_at_3month
+
+-   Destination_3month_0Death_1Home_2Subacute_3Chronic_4Rehabilitation_5General_6Nursing
+
+-   EQ_5D_Sum_Score_3month
+
+-   EQ_5D_VAS_3month
+
+-   Barthel_index_3month
+
+-   PICS_Physical_3month　（Barthel
+IndexがPICSの身体機能障害の程度を満たすかどうか）
+
+-   HADs_depression_3month
+
+-   HADs_anxiety_3month
+
+-   IES_R_Sum_3month
+
+-   PICS_Mental_3month（HADsとIES-RのどちらかがPICSの精神機能障害の程度を満たすかどうか）
+
+-   SMQ_3month
+
+-   PICS_Cognitive_3month（SMQがPICSの認知機能障害の程度を満たすかどうか）
+
+-   PICS_PICS_3month（PICSの定義を満たしているか）
+
+-   （EQ-5D-5Lの内訳はSupplementalとして提示？）
+
+## dataの作成(numeric, character)
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# Pivot numeric columns
+pics_numeric <- sepsis_pics_raw %>% 
+  select(Patient_Uniqe_ID, 
+         keep(names(.), ~ grepl("^(Barthel_index_)" , .)),
+         keep(names(.), ~ grepl("^(HADs_depression_)" , .)),
+         keep(names(.), ~ grepl("^(HADs_anxiety_)" , .)),
+         keep(names(.), ~ grepl("^(IES_R_Sum_)" , .)),
+         keep(names(.), ~ grepl("^(SMQ_)" , .)),
+         keep(names(.), ~ grepl("^(EQ_5D_Sum_Score_)" , .))) %>% 
+  select(-Barthel_index_ICU_discharge) %>% 
+  inner_join(pics_clustering_complete %>% 
+               cbind(clustering_data %>% select(kmeans_class)) %>% 
+               select(Patient_Uniqe_ID, kmeans_class)) %>% 
+  select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
+  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.)))%>%
+  mutate(across(-c(Patient_Uniqe_ID, kmeans_class), 
+                ~as.numeric(.)))  %>% 
+  select(kmeans_class, where(is.numeric)) %>% 
+  #cbind(outcome_pics %>% select(kmeans_class)) %>% 
+  group_by(kmeans_class) %>% 
+  pivot_longer(cols = c(-kmeans_class)) %>% 
+  mutate(Timepoint = case_when(
+    str_detect(name, "_discharge$")  ~ "Discharge",
+    str_detect(name, "_3month$")  ~ "3 Months",
+    str_detect(name, "_6month$")  ~ "6 Months",
+    str_detect(name, "_12month$") ~ "12 Months",
+    TRUE  ~ NA_character_
+  )) %>% 
+  ungroup() %>% 
+  rename(
+    Phenotype = kmeans_class
+  )
+
+pics_charcter <- sepsis_pics_raw %>% 
+  select(Patient_Uniqe_ID, 
+         keep(names(.), ~ grepl("^(PICS_Physical_)", .)),
+         keep(names(.), ~ grepl("^(PICS_Mental_)", .)),
+         keep(names(.), ~ grepl("^(PICS_Cognitive_)", .)),
+         keep(names(.), ~ grepl("^(PICS_PICS_)", .)),
+         keep(names(.), ~ grepl("^(HADs_depression_)" , .)),
+         keep(names(.), ~ grepl("^(HADs_anxiety_)" , .)),
+         keep(names(.), ~ grepl("^(IES_R_Sum_)", .)),
+         keep(names(.), ~ grepl("^(Survival)", .)),
+         keep(names(.), ~ grepl("^(Return_to_work_at_)" , .)),
+         keep(names(.), ~ grepl("^(Return_to_original_work_at_)", .)),
+         keep(names(.), ~ grepl("^(Destination_)", .)))  %>% 
+  inner_join(pics_clustering_complete %>% 
+               cbind(clustering_data %>% select(kmeans_class)) %>% 
+               select(Patient_Uniqe_ID, kmeans_class)) %>% 
+  select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
+  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.))) %>%
+  select(-Patient_Uniqe_ID, where(is.character)) %>%
+  mutate(across(-c(Patient_Uniqe_ID, kmeans_class), 
+                ~as.character(.))) %>% 
+  ungroup() %>% 
+  group_by(kmeans_class) %>% 
+  pivot_longer(cols = c(-kmeans_class)) %>% 
+  mutate(Timepoint = case_when(
+    
+    grepl("discharge", name, ignore.case = TRUE) ~ "Discharge",
+    grepl("3month", name, ignore.case = TRUE) ~ "3 Months",
+    grepl("6month", name, ignore.case = TRUE) ~ "6 Months",
+    grepl("12month", name, ignore.case = TRUE) ~ "12 Months",
+    TRUE ~ NA_character_
+  )) %>% 
+  ungroup()%>% 
+  rename(
+    Phenotype = kmeans_class
+  )
+```
+
+## functionの作成
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# 色を手動で設定
+# 他の結果も揃える
+high_contrast_colors <- c("Phenotype1" = "#D32F2F", "Phenotype2" = "#1976D2", 
+                          "Phenotype3" = "#388E3C", "Phenotype4" = "#8E44AD")
+
+# 箱ひげ図を描き、中央値を折線で結ぶ
+
+boxplot_clustering <- function(data, var, var_title){
+  
+  data <- data %>% 
+    filter(str_detect(name, paste0("", var, "")))
+  
+  gg_plot_num <- ggplot(data, aes(x = Timepoint, y = value, color = Phenotype)) +
+    geom_boxplot(aes(fill=Phenotype), alpha=0.4, outlier.shape = NA) +
+    stat_summary(fun=median, geom="line", aes(group=Phenotype), size=1, linetype="dashed",
+                 position = position_dodge(width = .75)) + # positionで点の位置調整
+    stat_summary(fun=median, geom="point", size=1.5, 
+                 position = position_dodge(width = .75))  +
+    geom_label_repel(aes(label = sprintf("%.2f", ..y..)), stat = "summary", fun = median,                       position = position_dodge(width = 0.8),size = 3) +
+    scale_x_discrete(limits=c("Discharge", "3 Months", "6 Months", "12 Months")) +
+    scale_color_manual(values=high_contrast_colors) +  # 色を手動で設定
+    scale_fill_manual(values=high_contrast_colors) +  # 塗りつぶし色も手動で設定
+    ylab("Measurement Value") +
+    xlab("Timepoint") +
+    ggtitle(paste0("", var_title, "")) +
+    theme_bw() +
+    theme(plot.title.position = "plot",  # タイトル位置を "plot" 内に
+          plot.title = element_text(hjust = 0.5, size = 10),
+          legend.position = "bottom") +
+    theme(legend.text = element_text(size = 12),
+          axis.title.x = element_text(size = 10),  # x軸のタイトルの文字サイズ
+          axis.title.y = element_text(size = 10),  # y軸のタイトルの文字サイズ
+          axis.text.x = element_text(size = 10),   # x軸のラベルの文字サイズ
+          axis.text.y = element_text(size = 10)) + # y軸のラベルの文字サイズ
+    theme(legend.position ="null")
+  
+  return(gg_plot_num)
+  # topptx(
+  #   figure = gg_plot_num,
+  #   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  #   nr = 1,
+  #   nc = 1,
+  #   irow = 1,
+  #   icol = 1,
+  #   onsame = FALSE,
+  #   title = "",
+  #   left = 0.15,
+  #   top = 0.15,
+  #   width = 254/25.4,
+  #   height = 190.5/25.4,
+  #   units = "in",
+  #   append = TRUE,
+  #   devsize = FALSE
+  # )
+}
+
+# percentの表示
+percent_clustering <- function(data0, var, var_title){
+  
+  data <- data0 %>% 
+    filter(str_detect(name, paste0("", var, ""))) %>% 
+    drop_na(value) %>% 
+    mutate(value = as.numeric(value)) %>% 
+    group_by(Phenotype, name, Timepoint) %>% 
+    summarise(Freq = round(sum(value, na.rm = TRUE) * 100 / n(), 1)) %>% 
+    ungroup()
+  
+  
+  gg_plot_cha <- ggplot(data, aes(x = Timepoint, y = Freq, color = Phenotype)) +
+    stat_summary(fun=median, geom="line", aes(group=Phenotype), size=1, linetype="dashed") +
+    stat_summary(fun=median, geom="point", size=1.5) +
+    geom_label_repel(aes(label = sprintf("%.0f", ..y..)), stat = "summary", fun = median,size = 3) +
+    scale_x_discrete(limits=c("Discharge", "3 Months", "6 Months", "12 Months")) +
+    scale_color_manual(values=high_contrast_colors) +  # 色を手動で設定
+    scale_fill_manual(values=high_contrast_colors) +  # 塗りつぶし色も手動で設定
+    ylab("Percentage (%)") +
+    xlab("Timepoint") +
+    ggtitle(paste0("", var_title, "")) +
+    theme_bw() +
+    theme(plot.title.position = "plot",  # タイトル位置を "plot" 内に
+          plot.title = element_text(hjust = 0.5, size = 10),
+          legend.position = "bottom") +
+    scale_y_continuous(breaks = seq(0, 100, 20)) +
+    ylim(c(0,100)) +
+    theme(legend.text = element_text(size = 10),
+          axis.title.x = element_text(size = 10),  # x軸のタイトルの文字サイズ
+          axis.title.y = element_text(size = 10),  # y軸のタイトルの文字サイズ
+          axis.text.x = element_text(size = 10),   # x軸のラベルの文字サイズ
+          axis.text.y = element_text(size = 10)) + # y軸のラベルの文字サイズ
+    theme(legend.position ="null")  
+  #     topptx(
+  #   figure = gg_plot_cha,
+  #   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231005.pptx",
+  #   nr = 1,
+  #   nc = 1,
+  #   irow = 1,
+  #   icol = 1,
+  #   onsame = FALSE,
+  #   title = "",
+  #   left = 0.15,
+  #   top = 0.15,
+  #   width = 254/25.4,
+  #   height = 190.5/25.4,
+  #   units = "in",
+  #   append = TRUE,
+  #   devsize = FALSE
+  # )
+  return(gg_plot_cha)
+}
+```
+
+## Barthel
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# 連続変数のboxplot
+Barthel <- boxplot_clustering(pics_numeric, "Barthel_index_", "Barthel index")
+
+(Barthel+Barthel)/(Barthel + Barthel)/(Barthel+Barthel)/(Barthel+Barthel)
+```
+
+## HADs_depression
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+HADs_depression <- boxplot_clustering(pics_numeric, "HADs_depression_", "HADs(depression)")
+```
+
+## HADs_anxiety
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+HADs_anxiety <- boxplot_clustering(pics_numeric, "HADs_anxiety_", " HADs(anxiety)")
+```
+
+## IES_R_Sum
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+IES_R_Sum <- boxplot_clustering(pics_numeric, "IES_R_Sum_", "IES R Sum")
+```
+
+## SMQ
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+SMQ <- boxplot_clustering(pics_numeric, "SMQ_", "SMQ")
+```
+
+## EQ_5D_Sum_Score
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+EQ_5D_Sum_Score <- boxplot_clustering(pics_numeric, "EQ_5D_Sum_Score", "EQ 5D Sum Score")
+```
+
+## PICS_Physical
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# %の表示
+PICS_Physical <- percent_clustering(pics_charcter, "PICS_Physical_", "PICS(Physical)")
+
+topptx(
+  figure = PICS_Physical,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+```
+
+## PICS_Mental
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+PICS_Mental <- percent_clustering(pics_charcter, "PICS_Mental", "PICS(Mental) ")
+
+topptx(
+  figure = PICS_Mental,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+```
+
+## PICS_Cognitive
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+PICS_Cognitive <- percent_clustering(pics_charcter, "PICS_Cognitive_", "PICS(Cognitive)")
+
+topptx(
+  figure = PICS_Cognitive,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+```
+
+## PICS_PICS (合計点)
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+PICS_PICS <- percent_clustering(pics_charcter, "PICS_PICS_", "PICS")
+
+topptx(
+  figure = PICS_PICS,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+```
+
+## Survival
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+Survival <- percent_clustering(pics_charcter, "Survival", "Mortality") *
+  scale_x_discrete(limits=c("3 Months", "6 Months", "12 Months"))
+
+topptx(
+  figure = Survival,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+```
+
+## Return_to_work
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+pics_charcter_work <- sepsis_pics_raw %>% 
+  filter(Employment_Patient_Prior_Hospitalization == "1") %>% 
+  select(Patient_Uniqe_ID, 
+         keep(names(.), ~ grepl("^(Return_to_work_at_)" , .)),
+         keep(names(.), ~ grepl("^(Return_to_original_work_at_)", .)),
+  )  %>% 
+  inner_join(pics_clustering_complete %>% 
+               cbind(clustering_data %>% select(kmeans_class)) %>% 
+               select(Patient_Uniqe_ID, kmeans_class)) %>% 
+  select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
+  mutate(across(everything(), ~  as.character(.))) %>%
+  select(-Patient_Uniqe_ID) %>% 
+  select(where(is.character)) %>%
+  mutate(across(-c(kmeans_class), 
+                ~as.character(.))) %>% 
+  ungroup() %>% 
+  group_by(kmeans_class) %>% 
+  pivot_longer(cols = c(-kmeans_class)) %>% 
+  mutate(Timepoint = case_when(
+    
+    grepl("discharge", name, ignore.case = TRUE) ~ "Discharge",
+    grepl("3month", name, ignore.case = TRUE) ~ "3 Months",
+    grepl("6month", name, ignore.case = TRUE) ~ "6 Months",
+    grepl("12month", name, ignore.case = TRUE) ~ "12 Months",
+    TRUE ~ NA_character_
+  )) %>% 
+  ungroup()%>% 
+  rename(
+    Phenotype = kmeans_class
+  )
+
+Return_to_work <- percent_clustering(pics_charcter, "Return_to_work_", "Rate of return to work") *
+  scale_x_discrete(limits=c("3 Months", "6 Months", "12 Months")) 
+
+Return_to_work_only <- percent_clustering(pics_charcter_work, "Return_to_work_", "Rate of return to work") *
+  scale_x_discrete(limits=c("3 Months", "6 Months", "12 Months")) 
+
+
+topptx(
+  figure = Return_to_work,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+
+topptx(
+  figure = Return_to_work_only,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+
+# 入院前に働いていた人を対象とした図
+Return_to_original_work <- percent_clustering(pics_charcter, "Return_to_original_work_", "Changes in rate of return to original work over the first year of hospital discharge in phenotypes") *
+  scale_x_discrete(limits=c("3 Months", "6 Months", "12 Months")) 
+
+Return_to_original_work_only <- percent_clustering(pics_charcter_work, "Return_to_original_work_", "Changes in rate of return to original work over the first year of hospital discharge in phenotypes") *
+  scale_x_discrete(limits=c("3 Months", "6 Months", "12 Months")) 
+
+topptx(
+  figure = Return_to_original_work,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+
+topptx(
+  figure = Return_to_original_work_only,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+```
+
+## destination_data
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+destination_data <- sepsis_pics_raw %>%
+  select(Patient_Uniqe_ID, starts_with("Destination_")) %>%
+  mutate(across(starts_with("Destination_"), ~ case_when(. == "1" ~ 1, 
+                                                         . == "0" ~ NA_real_, 
+                                                         TRUE ~ 0))) %>% 
+  drop_na() %>% 
+  inner_join(pics_clustering_complete %>% 
+               cbind(clustering_data %>% select(kmeans_class)) %>% 
+               select(Patient_Uniqe_ID, kmeans_class)) %>% 
+  select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
+  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.)))%>%
+  select(-Patient_Uniqe_ID, where(is.character)) %>%
+  mutate(across(-c(Patient_Uniqe_ID, kmeans_class), 
+                ~as.character(.))) %>% 
+  ungroup() %>% 
+  select(- Patient_Uniqe_ID) %>% 
+  group_by(kmeans_class) %>% 
+  pivot_longer(cols = c(-kmeans_class)) %>% 
+  mutate(Timepoint = case_when(
+    
+    grepl("discharge", name, ignore.case = TRUE) ~ "Discharge",
+    grepl("3month", name, ignore.case = TRUE) ~ "3 Months",
+    grepl("6month", name, ignore.case = TRUE) ~ "6 Months",
+    grepl("12month", name, ignore.case = TRUE) ~ "12 Months",
+    TRUE ~ NA_character_
+  )) %>% 
+  ungroup()%>% 
+  rename(
+    Phenotype = kmeans_class
+  )
+
+destination <- percent_clustering(destination_data, "Destination_", 
+                                  "Rate of destination") 
+
+topptx(
+  figure = destination,
+  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+  nr = 1,
+  nc = 1,
+  irow = 1,
+  icol = 1,
+  onsame = FALSE,
+  title = "",
+  left = 0.15,
+  top = 0.15,
+  width = 254/25.4,
+  height = 190.5/25.4,
+  units = "in",
+  append = TRUE,
+  devsize = FALSE
+)
+```
+
+## alluvial plot (現状使う予定ない)
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
+# chacterのグラフ
+pics_allv <- sepsis_pics_raw %>% 
+  select(Patient_Uniqe_ID, 
+         keep(names(.), ~ grepl("^(Destination_)", .)))  %>% 
+  inner_join(pics_clustering_complete %>% 
+               cbind(clustering_data %>% select(kmeans_class)) %>% 
+               select(Patient_Uniqe_ID, kmeans_class)) %>% 
+  select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
+  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.))) %>%
+  select(-Patient_Uniqe_ID, where(is.character)) %>%
+  group_by(kmeans_class) %>% 
+  pivot_longer(cols = c(-kmeans_class, - Patient_Uniqe_ID)) %>% 
+  mutate(Timepoint = case_when(
+    
+    grepl("discharge", name, ignore.case = TRUE) ~ "Discharge",
+    grepl("3month", name, ignore.case = TRUE) ~ "3 Months",
+    grepl("6month", name, ignore.case = TRUE) ~ "6 Months",
+    grepl("12month", name, ignore.case = TRUE) ~ "12 Months",
+    TRUE ~ NA_character_
+  )) %>% 
+  ungroup()%>% 
+  rename(
+    Phenotype = kmeans_class
+  ) %>% 
+  drop_na(value) %>% 
+  mutate(value = as.numeric(value)) %>% 
+  mutate(value = factor(value,
+                        levels =  unique(sort(as.numeric(value))))) %>% 
+  group_by(Patient_Uniqe_ID, Phenotype, Timepoint, value) %>% 
+  summarise(Freq = n()) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = Timepoint, values_from = value) %>% 
+  select(Phenotype, Freq, Discharge, `3 Months`,
+         `6 Months`, `12 Months`) %>% 
+  arrange(Phenotype)
+
+
+gg_allv <- ggplot(pics_allv,
+                  aes(y = Freq, 
+                      axis1 = Discharge, 
+                      axis2 = `3 Months`,
+                      axis3 = `6 Months`,
+                      axis4 = `12 Months`)) +
+  geom_alluvium(aes(fill = Phenotype), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "black", color = "grey") +
+  geom_label_repel(stat = "stratum", 
+                   aes(label = after_stat(stratum)), nudge_x = 0.15) +
+  scale_x_discrete(limits = c("Discharge", "3 Months", "6 Months", "12 Months")) +
+  scale_color_manual(values=high_contrast_colors) +
+  ggtitle("Changes in Destination over the first year of hospital discharge in phenotypes") +
+  theme_bw() +
+  ylab("Measurement Value") +
+  xlab("Timepoint") +
+  
+  theme(plot.title.position = "plot",  # タイトル位置を "plot" 内に
+        plot.title = element_text(hjust = 0.5, size = 16),
+        legend.position = "bottom") +
+  theme(legend.text = element_text(size = 12),
+        axis.title.x = element_text(size = 16),  # x軸のタイトルの文字サイズ
+        axis.title.y = element_text(size = 16),  # y軸のタイトルの文字サイズ
+        axis.text.x = element_text(size = 12),   # x軸のラベルの文字サイズ
+        axis.text.y = element_text(size = 12))   #
+
+# topptx(
+#   figure = gg_allv,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231005.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
+```
+
+# figure3
+```{r}
+total_plot <- (PICS_Physical + Barthel)/(PICS_Cognitive + SMQ)/(PICS_Mental + HADs_depression)/(HADs_anxiety + IES_R_Sum)
+
+# topptx(
+#   figure = total_plot,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/total_plot.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
+```
+
