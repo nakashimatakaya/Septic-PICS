@@ -312,7 +312,7 @@ gg.pca <- ggplot(data = tsne_data,
   theme_bw() +
   labs(x="tsne1", y="tsne2",title="Rtsne all")
 
-print(gg.pca)
+# print(gg.pca)
 ```
 
 ## クラスタリング (Consensus Clustering)
@@ -534,7 +534,7 @@ gg_kmeans <- ggplot(data = clustering_data, aes(x = tsne1, y = tsne2, color = km
   scale_color_manual(values = high_contrast_colors) + # 手動で色を指定
   theme_bw() +
   labs(x = "tsne1", y = "tsne2", title = "tSNE kmeans") +
-    theme(legend.position ="bottom")
+  theme(legend.position ="bottom")
 
 gg_hierarchical <- ggplot(data = clustering_data,
                           aes(x = tsne1, y = tsne2, color = hierarchical_class)) +
@@ -551,7 +551,7 @@ gg_pam <- ggplot(data = clustering_data,
 (gg_all + gg_kmeans) / (gg_hierarchical + gg_pam)
 
 
-topptx(gg_kmeans, filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/tsne_nt1.pptx")
+##topptx(gg_kmeans, filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/tsne_nt1.pptx")
 ```
 
 ### alluvial plot
@@ -654,11 +654,11 @@ table1_data_clustering <- table1 %>%
   add_n() %>% 
   add_overall() %>% 
   bold_labels() %>% 
-  #add_p() %>% 
+  add_p(list(all_continuous() ~ "aov", all_categorical() ~ "chisq.test")) %>% 
   as_flex_table()
 
 
-print(table1_data_clustering, "docx")
+## print(table1_data_clustering, "docx")
 
 #table1_data_clustering
 ```
@@ -666,7 +666,6 @@ print(table1_data_clustering, "docx")
 ### table1 (baseline変数)
 
 ```{r}
-library(tidyverse)
 
 # 既存のデータフレーム（dfと仮定）から指定の変数を抽出
 selected_df <- sepsis_pics_raw %>%
@@ -753,7 +752,7 @@ table1_data_baseline <- selected_df_new %>%
     digits = all_continuous() ~ 1,
     missing = "no"
   ) %>% 
-  modify_spanning_header(starts_with("stat_") ~ "**Presence of VAE **") %>% 
+  modify_spanning_header(starts_with("stat_") ~ "**Phenotype **") %>% 
   modify_header(
     label = "**Characteristics**",
     all_stat_cols() ~ "**{level} \n n = {n} ({round(p * 100, 1)}%)**"
@@ -761,10 +760,10 @@ table1_data_baseline <- selected_df_new %>%
   add_n() %>% 
   add_overall() %>% 
   bold_labels() %>% 
-  #add_p() %>% 
+  add_p(list(all_continuous() ~ "aov", all_categorical() ~ "chisq.test")) %>% 
   as_flex_table()
 
-print(table1_data_baseline, "docx")
+## print(table1_data_baseline, "docx")
 
 ```
 
@@ -840,23 +839,23 @@ boxplot_clustering_table1 <- function(data0, variable){
           axis.text.y = element_text(size = 12))   # y軸のラベルの文字サイズ
   
   
-  topptx(
-    figure = gg_plot_num_table,
-    filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_table_figure_20231005.pptx",
-    nr = 1,
-    nc = 1,
-    irow = 1,
-    icol = 1,
-    onsame = FALSE,
-    title = "",
-    left = 0.15,
-    top = 0.15,
-    width = 254/25.4,
-    height = 190.5/25.4,
-    units = "in",
-    append = TRUE,
-    devsize = FALSE
-  )
+  # topptx(
+  #   figure = gg_plot_num_table,
+  #   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_table_figure_20231005.pptx",
+  #   nr = 1,
+  #   nc = 1,
+  #   irow = 1,
+  #   icol = 1,
+  #   onsame = FALSE,
+  #   title = "",
+  #   left = 0.15,
+  #   top = 0.15,
+  #   width = 254/25.4,
+  #   height = 190.5/25.4,
+  #   units = "in",
+  #   append = TRUE,
+  #   devsize = FALSE
+  # )
 }
 
 # 解析に用いた変数
@@ -869,11 +868,11 @@ selected_df_new_numeric <- selected_df_new %>%
   rename(Phenotype = "kmeans class") %>% 
   select(Phenotype, where(is.numeric)) %>% 
   as.data.frame() 
-  
-  
-  for (variable in names(selected_df_new_numeric)[2:31]) {
-    boxplot_clustering_table1(selected_df_new_numeric,  variable)
-  }
+
+
+for (variable in names(selected_df_new_numeric)[2:31]) {
+  boxplot_clustering_table1(selected_df_new_numeric,  variable)
+}
 # baseline変数＆categorical
 
 ```
@@ -929,7 +928,7 @@ pics_numeric <- sepsis_pics_raw %>%
                cbind(clustering_data %>% select(kmeans_class)) %>% 
                select(Patient_Uniqe_ID, kmeans_class)) %>% 
   select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
-  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.)))%>%
+  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.))) %>%
   mutate(across(-c(Patient_Uniqe_ID, kmeans_class), 
                 ~as.numeric(.)))  %>% 
   select(kmeans_class, where(is.numeric)) %>% 
@@ -965,7 +964,7 @@ pics_charcter <- sepsis_pics_raw %>%
                cbind(clustering_data %>% select(kmeans_class)) %>% 
                select(Patient_Uniqe_ID, kmeans_class)) %>% 
   select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
-  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.))) %>%
+  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.)))%>%
   select(-Patient_Uniqe_ID, where(is.character)) %>%
   mutate(across(-c(Patient_Uniqe_ID, kmeans_class), 
                 ~as.character(.))) %>% 
@@ -1006,7 +1005,8 @@ boxplot_clustering <- function(data, var, var_title){
                  position = position_dodge(width = .75)) + # positionで点の位置調整
     stat_summary(fun=median, geom="point", size=1.5, 
                  position = position_dodge(width = .75))  +
-    geom_label_repel(aes(label = sprintf("%.2f", ..y..)), stat = "summary", fun = median,                       position = position_dodge(width = 0.8),size = 3) +
+    geom_label_repel(aes(label = sprintf("%.2f", ..y..)), stat = "summary", fun = median, # 中央値
+                     position = position_dodge(width = 0.8),size = 3) +
     scale_x_discrete(limits=c("Discharge", "3 Months", "6 Months", "12 Months")) +
     scale_color_manual(values=high_contrast_colors) +  # 色を手動で設定
     scale_fill_manual(values=high_contrast_colors) +  # 塗りつぶし色も手動で設定
@@ -1078,7 +1078,7 @@ percent_clustering <- function(data0, var, var_title){
           axis.text.x = element_text(size = 10),   # x軸のラベルの文字サイズ
           axis.text.y = element_text(size = 10)) + # y軸のラベルの文字サイズ
     theme(legend.position ="null")  
-  #     topptx(
+  #     #topptx(
   #   figure = gg_plot_cha,
   #   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231005.pptx",
   #   nr = 1,
@@ -1137,92 +1137,92 @@ EQ_5D_Sum_Score <- boxplot_clustering(pics_numeric, "EQ_5D_Sum_Score", "EQ 5D Su
 # %の表示
 PICS_Physical <- percent_clustering(pics_charcter, "PICS_Physical_", "PICS(Physical)")
 
-topptx(
-  figure = PICS_Physical,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = PICS_Physical,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 ```
 
 ## PICS_Mental
 ```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
 PICS_Mental <- percent_clustering(pics_charcter, "PICS_Mental", "PICS(Mental) ")
 
-topptx(
-  figure = PICS_Mental,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = PICS_Mental,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 ```
 
 ## PICS_Cognitive
 ```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
 PICS_Cognitive <- percent_clustering(pics_charcter, "PICS_Cognitive_", "PICS(Cognitive)")
 
-topptx(
-  figure = PICS_Cognitive,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = PICS_Cognitive,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 ```
 
 ## PICS_PICS (合計点)
 ```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.width=174/25.4, fig.height=234/25.4}
 PICS_PICS <- percent_clustering(pics_charcter, "PICS_PICS_", "PICS")
 
-topptx(
-  figure = PICS_PICS,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = PICS_PICS,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 ```
 
 ## Survival
@@ -1230,23 +1230,23 @@ topptx(
 Survival <- percent_clustering(pics_charcter, "Survival", "Mortality") *
   scale_x_discrete(limits=c("3 Months", "6 Months", "12 Months"))
 
-topptx(
-  figure = Survival,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = Survival,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 ```
 
 ## Return_to_work
@@ -1289,41 +1289,41 @@ Return_to_work_only <- percent_clustering(pics_charcter_work, "Return_to_work_",
   scale_x_discrete(limits=c("3 Months", "6 Months", "12 Months")) 
 
 
-topptx(
-  figure = Return_to_work,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = Return_to_work,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 
-topptx(
-  figure = Return_to_work_only,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = Return_to_work_only,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 
 # 入院前に働いていた人を対象とした図
 Return_to_original_work <- percent_clustering(pics_charcter, "Return_to_original_work_", "Changes in rate of return to original work over the first year of hospital discharge in phenotypes") *
@@ -1332,41 +1332,41 @@ Return_to_original_work <- percent_clustering(pics_charcter, "Return_to_original
 Return_to_original_work_only <- percent_clustering(pics_charcter_work, "Return_to_original_work_", "Changes in rate of return to original work over the first year of hospital discharge in phenotypes") *
   scale_x_discrete(limits=c("3 Months", "6 Months", "12 Months")) 
 
-topptx(
-  figure = Return_to_original_work,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = Return_to_original_work,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 
-topptx(
-  figure = Return_to_original_work_only,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = Return_to_original_work_only,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 ```
 
 ## destination_data
@@ -1405,23 +1405,23 @@ destination_data <- sepsis_pics_raw %>%
 destination <- percent_clustering(destination_data, "Destination_", 
                                   "Rate of destination") 
 
-topptx(
-  figure = destination,
-  filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
-  nr = 1,
-  nc = 1,
-  irow = 1,
-  icol = 1,
-  onsame = FALSE,
-  title = "",
-  left = 0.15,
-  top = 0.15,
-  width = 254/25.4,
-  height = 190.5/25.4,
-  units = "in",
-  append = TRUE,
-  devsize = FALSE
-)
+#topptx(
+#   figure = destination,
+#   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231028.pptx",
+#   nr = 1,
+#   nc = 1,
+#   irow = 1,
+#   icol = 1,
+#   onsame = FALSE,
+#   title = "",
+#   left = 0.15,
+#   top = 0.15,
+#   width = 254/25.4,
+#   height = 190.5/25.4,
+#   units = "in",
+#   append = TRUE,
+#   devsize = FALSE
+# )
 ```
 
 ## alluvial plot (現状使う予定ない)
@@ -1434,7 +1434,7 @@ pics_allv <- sepsis_pics_raw %>%
                cbind(clustering_data %>% select(kmeans_class)) %>% 
                select(Patient_Uniqe_ID, kmeans_class)) %>% 
   select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
-  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.))) %>%
+  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.)))%>%
   select(-Patient_Uniqe_ID, where(is.character)) %>%
   group_by(kmeans_class) %>% 
   pivot_longer(cols = c(-kmeans_class, - Patient_Uniqe_ID)) %>% 
@@ -1489,7 +1489,7 @@ gg_allv <- ggplot(pics_allv,
         axis.text.x = element_text(size = 12),   # x軸のラベルの文字サイズ
         axis.text.y = element_text(size = 12))   #
 
-# topptx(
+# #topptx(
 #   figure = gg_allv,
 #   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/PICS_outcome_figure_20231005.pptx",
 #   nr = 1,
@@ -1512,7 +1512,7 @@ gg_allv <- ggplot(pics_allv,
 ```{r}
 total_plot <- (PICS_Physical + Barthel)/(PICS_Cognitive + SMQ)/(PICS_Mental + HADs_depression)/(HADs_anxiety + IES_R_Sum)
 
-# topptx(
+# #topptx(
 #   figure = total_plot,
 #   filename = "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/total_plot.pptx",
 #   nr = 1,
@@ -1529,5 +1529,154 @@ total_plot <- (PICS_Physical + Barthel)/(PICS_Cognitive + SMQ)/(PICS_Mental + HA
 #   append = TRUE,
 #   devsize = FALSE
 # )
+```
+
+# 追加解析
+
+メールのやりとり
+
+ーAt dischargeのアウトカムは有意差があるのか？
+
+ーそのBaseline characteristicsは有意に違うのか？
+
+→上記2点については，劉先生もおっしゃる通り，table1で検定を行うことで示すことができます．
+
+
+ーその後４つのGroupは本当に違った経過をたどっているのか？（Figureだけだと同じでは？と指摘されない部分も確かに多いです）
+です。
+→　最終時点 - At dischargeの変化量平均値をt検定
+
+## table1で検定を行う
+```{r}
+
+```
+
+## 最終時点 - At dischargeの変化量平均値をt検定
+
+```{r}
+
+library(survival)
+data(kidney)
+
+multi.tests <- function(fun = t.test, df, vars, group.var, ...) {
+  sapply(simplify = FALSE,                                    # sapply(simplify=T) better, elements named
+         vars,                                                # loop on vector of outcome variable names
+         function(var) {
+           formula <- as.formula(paste(var, "~", group.var))
+           df <- df %>% drop_na(var)
+           fun(data = df, formula, ...)                     # perform test with a given fun, default t.test
+         }
+  )
+}
+
+
+```
+
+```{r}
+change_rate_numeric <- sepsis_pics_raw %>% 
+  select(Patient_Uniqe_ID, 
+         keep(names(.), ~ grepl("^(Barthel_index_)" , .)),
+         keep(names(.), ~ grepl("^(HADs_depression_)" , .)),
+         keep(names(.), ~ grepl("^(HADs_anxiety_)" , .)),
+         keep(names(.), ~ grepl("^(IES_R_Sum_)" , .)),
+         keep(names(.), ~ grepl("^(SMQ_)" , .)),
+         keep(names(.), ~ grepl("^(EQ_5D_Sum_Score_)" , .))) %>% 
+  select(-Barthel_index_ICU_discharge) %>% 
+  inner_join(pics_clustering_complete %>% 
+               cbind(clustering_data %>% select(kmeans_class)) %>% 
+               select(Patient_Uniqe_ID, kmeans_class)) %>% 
+  select(Patient_Uniqe_ID, kmeans_class, everything()) %>% 
+  mutate(across(everything(), ~ if(length(unique(.)) <= 3) as.numeric(.) else as.character(.))) %>%
+  mutate(across(-c(Patient_Uniqe_ID, kmeans_class), 
+                ~as.numeric(.)))  %>% 
+  select(Patient_Uniqe_ID, kmeans_class, where(is.numeric)) %>% 
+  #cbind(outcome_pics %>% select(kmeans_class)) %>% 
+  group_by(Patient_Uniqe_ID) %>% 
+  pivot_longer(cols = -c(Patient_Uniqe_ID, kmeans_class)) %>% 
+  mutate(Timepoint = case_when(
+    str_detect(name, "_discharge$")  ~ "Discharge",
+    str_detect(name, "_3month$")  ~ "3 Months",
+    str_detect(name, "_6month$")  ~ "6 Months",
+    str_detect(name, "_12month$") ~ "12 Months",
+    TRUE  ~ NA_character_
+  )) %>% 
+  ungroup() %>% 
+  rename(
+    Phenotype = kmeans_class
+  ) %>% 
+  
+  mutate(name = case_when(
+    str_detect(name, "_discharge$")  ~ str_replace(name, "_Hospital_discharge$", ""),
+    str_detect(name, "_3month$")  ~ str_replace(name, "_3month$", ""),
+    str_detect(name, "_6month$")  ~ str_replace(name, "_6month$", ""),
+    str_detect(name, "_12month$") ~ str_replace(name, "_12month$", ""),
+    TRUE  ~ NA_character_
+  )) %>% 
+  group_by(Patient_Uniqe_ID, Phenotype, name) %>% 
+  
+  summarise(change_rate = value[Timepoint == "12 Months"] - value[Timepoint == "Discharge"]) %>% 
+  # summarise(change_rate = case_when(
+  #   value[Timepoint == "Discharge"] != 0 ~ round((value[Timepoint == "12 Months"] -
+  #                                                   value[Timepoint == "Discharge"]) /
+  #                                                  value[Timepoint == "Discharge"], 2),
+  #   value[Timepoint == "Discharge"] == 0 ~ round((value[Timepoint == "12 Months"] -
+  #                                                   value[Timepoint == "Discharge"]) /
+  #                                                  0.01 , 2))) %>% 
+  ungroup() %>% 
+  arrange(name) %>% 
+  pivot_wider(names_from = name, values_from = change_rate) 
+
+miss_var_summary(change_rate_numeric)
+
+
+# 4つのグループ
+groups <- c(1, 2, 3, 4)
+
+# すべての組み合わせを生成
+combinations <- combn(groups, 2)
+
+result_ttest <- tibble()
+
+for (i in 1:ncol(combinations)) {
+  
+  res.multi.t.tests <-
+    multi.tests(fun = t.test,
+                df = change_rate_numeric %>% 
+                  filter(Phenotype %in% c(paste0("Phenotype", combinations[, i][1]),
+                                          paste0("Phenotype", combinations[, i][2]))),
+                vars = c( "Barthel_index", "EQ_5D_Sum_Score",
+                          "HADs_anxiety", "HADs_depression",
+                          "IES_R_Sum", "SMQ"),
+                group.var = "Phenotype",
+                var.equal = TRUE)
+  res.multi.t.tests
+  
+  result <- tibble(
+    Phenotype = paste0("Group ",combinations[, i][1], " vs Group ", combinations[, i][2], ""),
+    Outcome = c( "Barthel_index", "EQ_5D_Sum_Score",
+                 "HADs_anxiety", "HADs_depression",
+                 "IES_R_Sum", "SMQ"),
+    Former_mean = round(sapply(res.multi.t.tests, getElement, name = "estimate")[1,],2),
+    Latter_mean = round(sapply(res.multi.t.tests, getElement, name = "estimate")[2,],2),
+    
+    p_value = 
+      sapply(res.multi.t.tests, getElement, name = "p.value"))
+  
+  result_ttest <- rbind(result_ttest, result)
+  
+}
+
+result_ttest_new <- result_ttest %>% 
+  arrange(Outcome) %>% 
+  mutate(
+    p_value_005 = case_when(p_value < 0.05 ~ "*",
+                            TRUE ~ "") ,
+    
+    bonferoni = case_when(p_value < 0.05/6 ~ "**",
+                          TRUE ~ "") 
+  )
+#write.csv(result_ttest_new, "/Users/nakashimatakaya/Desktop/敗血症PICS/Outcome/ttest.csv")
+
+# 他のt検定の結果も表示する
 ```
 
